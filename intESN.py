@@ -1,64 +1,83 @@
 import numpy as np
 from copy import copy
 
+
+# Shape of X
+#   0:  number of entries
+#   1:  time
+#   2:  dimensionality
+
 class intESN:
 
-    def __init__(self, K, N, L, input_quantization, output_quantization=lambda x: 0, output_feedback=False, clipping=7, verbose=False, loss='mse', task='regression'):
-        self.q_in = input_quantization
-        self.q_out = output_quantization
-        self.output_feedback = output_feedback
-        self.clipping = clipping
+    def __init__(self, N, K, L, q_input, q_output = lambda x: 0, output_fb = False, clip = 7):
+        # quantization functions
+        self.q_in = q_input
+        self.q_out = q_output
 
+        # init states and output weights
         self.states = np.zeros([N])
-        self.extended_states = np.zeros([K + N + 1])
         self.W_out = np.zeros([K + N + 1, L])
 
-        self.K = K
-        self.N = N
-        self.L = L
+        # store constants
+        self.N = N      # reservoir size
+        self.K = K      # input dims
+        self.L = L      # output dims
 
-        self.verbose = verbose
+        # clipping constant
+        self.clip = clip
 
-        self.loss = loss
-        self.task = task
+        # output feedback
+        self.output_fb = output_fb
 
-    def fit(self, X, y, epochs=1, optimizer='pinv', batch_size=32, lr=0.01, rr=0.001, discard=0.1):
 
-        pred = None
+    def fit(self, X, y):
+        # sanity checks
+        if X.shape[2] != self.K:
+            print("incorrect input dimensionality")
 
-        for epoch in range(1, epochs + 1):
-            self.extended_states = np.zeros([X.shape[0] * X.shape[1], self.states.shape[0] + X.shape[0] + 1])
 
-            for i in range(X.shape[0]):
-                self.states = np.zeros(self.states.shape)
+        # harvest extended states
 
-                for j in range(X.shape[1]):
-                    self.states = self._clip(np.roll(self.states, 1) + self.q_in(X[i][j]) + self.output_feedback * self.q_out(y[i][j-1]))
-                    self.extended_states[i * X.shape[0] + j] = np.append(self.states, [X[i][j], 1])
+        # making a list takes longer than going straight to numpy array. But if singal is interrupted (aka different lengths time-wise), then a lot of space will be wasted 
 
-            transient = int(discard * self.extended_states.shape[0])
-            self.W_out = np.dot(np.linalg.pinv(self.extended_states[transient:]), y[i][transient:])
-            pred = np.reshape(np.dot(self.extended_states, self.W_out), (1, -1))
+        extended_states_list = []
+        # TODO Use list instead for efficiency ??
+        # extended_states = np.zeros([X.shape[0] * X.shape[1], self.K + self.N + 1])
 
-        error = np.sqrt(np.mean((pred - y)**2))
-        print(error)
+        for i in range(X.shape[0]):
+            # reset states to 0
+            self.states = np.zeros([self.N])
+
+            for j in range(X.shape[1]):
+                self.states = self._clip(np.roll(self.states, 1) + self.q_in(X[i][j]) + self.output_fb * self.q_out(y[i][j-1]))
+                extended_states_list.append(np.append(self.states, [X[i][j], 1]))
+                # extended_states[i * X.shape[0] + j] = np.append(self.states, [X[i][j], 1])
+
+        # flat and smooth
+        targets = y.flatten()
+        extended_states = np.array(extended_states_list, dtype='float')
+        print(extended_states.shape)
+        print(targets.shape)
+
+        # compute weights
+        # self.W_out = np.dot(np.linalg.pinv(extended_states), targets)
+
+        # get RMSE
+        pred = np.dot(extended_states, self.W_out)
+        rmse = np.sqrt(np.mean((pred - targets)**2))
+        print(rmse)
 
 
     def predict(self, X, y=None, reset=True):
+        # REFACTOR ME PLS
         if reset:
-            self.states = np.zeros(self.states.shape)
+            self.states = np.zeros(self.N)
 
-        # if X.ndim < 2:
-        #     X = np.reshape(X, (1, -1))
-        #     if y != None:
-        #         y = np.reshape(y, (1, -1))
-
-        # pred = np.zeros([X.shape[1]])
         pred = np.zeros(X.shape)
 
         for i in range(X.shape[0]):
             for j in range(X.shape[1]):
-                self.states = self._clip(np.roll(self.states, 1) + self.q_in(X[i][j]) + self.output_feedback * self.q_out(pred[i][j-1]))
+                self.states = self._clip(np.roll(self.states, 1) + self.q_in(X[i][j]) + self.output_fb * self.q_out(pred[i][j-1]))
                 pred[i][j] = np.dot(np.append(self.states, [X[i][j], 1]), self.W_out)
 
         if y is not None:
@@ -67,14 +86,12 @@ class intESN:
 
         return pred
 
-        # if y.shape[0] == 1:
-        #     y = y.flatten
 
     def _clip(self, b):
         """
         Clipping function, bounds the values of the activations
         """
         a = copy(b)
-        a[a > self.clipping] = self.clipping
-        a[a < -self.clipping] = -self.clipping
+        a[a > self.clip] = self.clip
+        a[a < -self.clip] = -self.clip
         return a
