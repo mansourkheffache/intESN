@@ -28,9 +28,10 @@ class intESN:
 
         # output feedback
         self.output_fb = output_fb
+        self.last_output = np.zeros([L])
 
 
-    def fit(self, X, y):
+    def fit(self, X, y, discard=0):
 
         # reshape data
         if X.ndim == 1:
@@ -66,6 +67,14 @@ class intESN:
         targets = y.flatten()       # might be useless
         extended_states = np.array(extended_states_list, dtype='float')
 
+        # disregard transient states
+        # print(discard)
+        # print(extended_states.shape)
+        # print(int(extended_states.size * discard))
+        extended_states = extended_states[int(extended_states.shape[0] * discard):]
+        targets = targets[int(targets.shape[0] * discard):]
+        # print(extended_states.size)
+
         # compute weights
         self.W_out = np.dot(np.linalg.pinv(extended_states), targets)
 
@@ -74,8 +83,11 @@ class intESN:
         rmse = np.sqrt(np.mean((pred - y)**2))
         print(rmse)
 
+        # store last output for future
+        self.last_output = y[-1][-1]
 
-    def predict(self, X, y=None, reset=True, last_output=0):
+    def predict(self, X, y=None, reset=True):
+
         # reshape data
         if X.ndim == 1:
             X = X[np.newaxis, :, np.newaxis]
@@ -83,14 +95,14 @@ class intESN:
         elif X.ndim == 2:
             X = X[np.newaxis, :]
             y = y[np.newaxis, :]
-
-
-        pred = np.zeros(X.shape)
-
+ 
+        pred = np.zeros(y.shape)
         if reset:
             self.states = np.zeros(self.N)
         else:
-            pred[:][-1] = last_output
+            pred[0][-1] = self.last_output
+
+        print(pred.shape)
 
         for i in range(X.shape[0]):
             for j in range(X.shape[1]):
