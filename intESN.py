@@ -31,6 +31,15 @@ class intESN:
 
 
     def fit(self, X, y):
+
+        # reshape data
+        if X.ndim == 1:
+            X = X[np.newaxis, :, np.newaxis]
+            y = y[np.newaxis, :, np.newaxis]
+        elif X.ndim == 2:
+            X = X[np.newaxis, :]
+            y = y[np.newaxis, :]
+
         # sanity checks
         if X.shape[2] != self.K:
             print("incorrect input dimensionality")
@@ -67,6 +76,14 @@ class intESN:
 
 
     def predict(self, X, y=None, reset=True, last_output=0):
+        # reshape data
+        if X.ndim == 1:
+            X = X[np.newaxis, :, np.newaxis]
+            y = y[np.newaxis, :, np.newaxis]
+        elif X.ndim == 2:
+            X = X[np.newaxis, :]
+            y = y[np.newaxis, :]
+
 
         pred = np.zeros(X.shape)
 
