@@ -54,26 +54,26 @@ class intESN:
                 # extended_states[i * X.shape[0] + j] = np.append(self.states, [X[i][j], 1])
 
         # flat and smooth
-        targets = y.flatten()
+        targets = y.flatten()       # might be useless
         extended_states = np.array(extended_states_list, dtype='float')
-        print(extended_states.shape)
-        print(targets.shape)
 
         # compute weights
-        # self.W_out = np.dot(np.linalg.pinv(extended_states), targets)
+        self.W_out = np.dot(np.linalg.pinv(extended_states), targets)
 
         # get RMSE
         pred = np.dot(extended_states, self.W_out)
-        rmse = np.sqrt(np.mean((pred - targets)**2))
+        rmse = np.sqrt(np.mean((pred - y)**2))
         print(rmse)
 
 
-    def predict(self, X, y=None, reset=True):
-        # REFACTOR ME PLS
-        if reset:
-            self.states = np.zeros(self.N)
+    def predict(self, X, y=None, reset=True, last_output=0):
 
         pred = np.zeros(X.shape)
+
+        if reset:
+            self.states = np.zeros(self.N)
+        else:
+            pred[:][-1] = last_output
 
         for i in range(X.shape[0]):
             for j in range(X.shape[1]):
@@ -81,8 +81,8 @@ class intESN:
                 pred[i][j] = np.dot(np.append(self.states, [X[i][j], 1]), self.W_out)
 
         if y is not None:
-            error = np.sqrt(np.mean((pred - y)**2))
-            print(error)
+            rmse = np.sqrt(np.mean((pred - y)**2))
+            print(rmse)
 
         return pred
 
