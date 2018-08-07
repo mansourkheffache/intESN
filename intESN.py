@@ -74,11 +74,11 @@ class intESN:
         extended_states = None
         if task == 'regression':
 
-            # making a list takes longer than going straight to numpy array. But if singal is interrupted (aka different lengths time-wise), then a lot of space will be wasted 
+            # INFO making a list takes longer than going straight to numpy array. But if singal is interrupted (aka different lengths time-wise), then a lot of space will be wasted 
 
-            extended_states_list = []
+            # extended_states_list = []
             # TODO Use list instead for efficiency ??
-            # extended_states = np.zeros([X.shape[0] * X.shape[1], self.K + self.N + 1])
+            extended_states = np.zeros([X.shape[0] * X.shape[1], self.K + self.N + 1])
 
             for i in range(X.shape[0]):
                 # reset states to 0
@@ -86,11 +86,11 @@ class intESN:
 
                 for j in range(X.shape[1]):
                     self.states = self._clip(np.roll(self.states, 1) + self.q_in(X[i][j]) + self.output_fb * self.q_out(y[i][j-1]))
-                    extended_states_list.append(np.append(self.states, [X[i][j], 1]))
-                    # extended_states[i * X.shape[0] + j] = np.append(self.states, [X[i][j], 1])
+                    # extended_states_list.append(np.append(self.states, [X[i][j], 1]))
+                    extended_states[i * X.shape[0] + j] = np.append(self.states, [X[i][j], 1])
 
             # filter out states
-            extended_states = np.array(extended_states_list, dtype='float')
+            # extended_states = np.array(extended_states_list, dtype='float')
 
             # discard transient states
             transient = int(extended_states.shape[0] * discard)
@@ -139,7 +139,7 @@ class intESN:
             print("incorrect input dimensionality")
             return
 
-        pred = np.zeros([y.shape[0], 2])
+        pred = np.zeros([X.shape[0], 2])
         if reset:
             self.states = np.zeros(self.N)
         # else:
@@ -161,6 +161,19 @@ class intESN:
 
         return pred
 
+    def classify(self, X, y=None):
+
+        # get predicted classes
+        predictions = self.predict(X)
+        guesses = np.argmax(predictions, axis=1)
+
+        # get accuracy
+        if y is not None:
+            hits = guesses[guesses == y].size
+            accuracy = float(hits) / y.size
+            print(accuracy) 
+
+        return guesses
 
     def _clip(self, b):
         """
