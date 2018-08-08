@@ -31,7 +31,7 @@ class intESN:
         self.last_output = np.zeros([L])
 
 
-    def fit(self, X, y, discard=0, task='regression', n_classes=1):
+    def fit(self, X, y, discard=0, task='regression'):
 
         # reshape data
         if X.ndim == 1:
@@ -141,7 +141,7 @@ class intESN:
 
         pred = np.zeros([X.shape[0], self.L])
         if reset:
-            self.states = np.zeros(self.N)
+                self.states = np.zeros(self.N)
         # else:
         #     pred[0][-1] = self.last_output
 
@@ -160,6 +160,64 @@ class intESN:
             print(rmse)
 
         return pred
+
+    def softmax(self, X, y):
+
+        # fancy hot-one encoding
+        # targets = np.zeros((X.shape[0], self.L))
+        # targets[np.arange(X.shape[0]), y] = 1
+
+
+
+        # harvest states
+        extended_states = np.zeros([X.shape[0], self.N + 1])
+        for i in range(X.shape[0]):
+            # reset states to 0
+            self.states = np.zeros([self.N])
+            for j in range(X.shape[1]):
+                self.states = self._clip(np.roll(self.states, 1) + self.q_in(X[i][j]))
+
+            extended_states[i] = np.append(self.states, [1])
+
+        # random weights
+        self.W_out = 0.01 * np.random.randn(self.N + 1, self.L)
+
+        step_size = 1e-2
+        reg = 1e-3
+
+        # e stands for epoch
+        for e in range(1000):
+            # get scores and avoid exp-losion
+            scores = np.dot(extended_states, self.W_out)
+            scores -= np.max(scores)
+
+            # compute the class probabilities
+            exp_scores = np.exp(scores)
+            probs = exp_scores / np.sum(exp_scores, axis=1, keepdims=True) # [N x K]
+
+            # compute the loss: average cross-entropy loss and regularization
+            # after a "batch"
+            correct_logprobs = -np.log(probs[range(X.shape[0]), y])
+            data_loss = np.sum(correct_logprobs) / X.shape[0]
+            reg_loss = 0.5 * reg * np.sum(self.W_out * self.W_out)
+            loss = data_loss + reg_loss
+
+            if e % 10 == 0:
+                print(loss)
+
+            # compute the gradient on scores
+            dscores = probs
+            dscores[range(X.shape[0]), y] -= 1
+            dscores /= X.shape[0]
+
+            # backpropate the gradient to the parameters (W,b)
+            dW = np.dot(extended_states.T, dscores)
+            # db = np.sum(dscores, axis=0, keepdims=True)
+
+            dW += reg * self.W_out # regularization gradient
+
+            # perform a parameter update
+            self.W_out += -step_size * dW
 
     def classify(self, X, y=None):
 
