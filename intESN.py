@@ -51,7 +51,7 @@ class intESN:
                 return -1
 
             # fancy hot-one encoding
-            targets = np.zeros((X.shape[0], n_classes))
+            targets = np.zeros((X.shape[0], self.L))
             targets[np.arange(X.shape[0]), y] = 1
             # targets[targets == 0] = -1        PENDEJO
         elif task == 'regression':
@@ -139,7 +139,7 @@ class intESN:
             print("incorrect input dimensionality")
             return
 
-        pred = np.zeros([X.shape[0], 2])
+        pred = np.zeros([X.shape[0], self.L])
         if reset:
             self.states = np.zeros(self.N)
         # else:
@@ -164,8 +164,8 @@ class intESN:
     def classify(self, X, y=None):
 
         # get predicted classes
-        predictions = self.predict(X)
-        guesses = np.argmax(predictions, axis=1)
+        scores = self.predict(X)
+        guesses = np.argmax(scores, axis=1)
 
         # get accuracy
         if y is not None:
