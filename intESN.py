@@ -41,24 +41,32 @@ class intESN:
 
         # check if chosen optimizer is supported
         if name not in optimizers.keys:
-            raise Exception('Optimizer "' + name + '" not supported. Bummer.')
+            raise Exception('Optimizer "{}" not supported. Bummer.'.format(name))
 
         # check for presence of all params
         for param in optimizers[name]['params']:
             if param not in kwargs:
-                raise Exception('Parameter "' + param + '" not provided to optimizer')
+                raise Exception('Parameter "{}" not provided to optimizer'.format(param))
 
         self.update_weights = optimizers[name]['func']
 
     def _init_loss_function(self, name, rr):
+        # loss function anatomy:
+        # 'name': lambda predicted, targets, n: -- return loss depending on those params
         loss_functions = {
             'cross_entropy': lambda predicted, targets, n: 0
         } 
 
-        self.compute_data_loss = loss_functions['name']
+        self.compute_data_loss = loss_functions[name]
         self.compute_reg_loss = lambda: 0.5 * rr * np.sum(self.W_out * self.W_out)
 
-    def compile(self, loss, optimizer, rr=0.0, **kwargs):
+    def compile(self, task, loss, optimizer, rr=0.0, **kwargs):
+        
+        # check if task is supported
+        supported_tasks = ['classification', 'regression']
+        if task not in supported_tasks:
+            raise Exception('Support for {} tasks not available yet'.format(self.task))
+        self.task = task
 
         # init optimizer
         self._init_optimizer(optimizer, **kwargs)
@@ -66,6 +74,82 @@ class intESN:
         # define loss function
         self._init_loss_function(loss, rr)
 
+
+    def _fix_input_dimensionality(self, X):
+        # reshape data
+        if X.ndim == 1:
+            X = X[np.newaxis, :, np.newaxis]
+        elif X.ndim == 2:
+            X = X[np.newaxis, :]
+
+        # sanity check
+        if X.shape[2] != self.K:
+            raise Exception('Input dimensionality mismatch: {} into {}'.format(X.shape[2], self.K))
+
+    def _get_targets(self, y):
+        # get proper targets
+        targets = None
+        if self.task == 'classification':
+            if y.ndim != 1:
+                raise Exception('Incorrect targets dimensionality')
+
+            # sanity check
+            if np.max(y) >= self.L:
+                raise Exception('Number of classes beyond capacity: {} into {}'.format(np.max(y) + 1, self.L))
+
+            targets = y
+        elif self.task == 'regression':
+            if y.ndim == 1:
+                y = y[np.newaxis, :, np.newaxis]
+            elif y.ndim == 2:
+                y = y[np.newaxis, :]
+
+            # sanity check
+            if y.shape[2] != self.L:
+                raise Exception('Output dimensionality mismatch: {} into {}'.format(y.shape[2], self.L))
+
+            targets = y
+            # get rid of last NaN, important for feedbacks as it becomes the first output feedback for t=0
+            targets[:, -1] = np.zeros([L])
+        else:
+            raise Exception('Weird...')
+
+        return targets
+
+    def _reset_states(self):
+        self.states = np.zeros([self.N])
+        self.last_output = np.zeros([self.L])
+        # first way is more efficient, but second more neat, find sweet spot
+        # self.states *= not keep
+        # self.last_output *= not keep
+
+    def _harvest_states(self, X, targets, seq_length=2**32):
+
+        extended_states = []
+
+        # TODO use np.nan (NaN) to delimit signal
+        # delimit all sequences with a NaN at the end of  - still TODO
+        delimiter = np.argmax(X, axis=1)[:, 0]
+        
+        for i in X.shape[0]:
+
+            self._reset_states()
+            
+            sequences = np.append(np.arange(0, delimiter, seq_length), delimiter)
+            for interval in arange(sequences.size - 1):
+                for t in arange(sequences[interval], sequences[interval + 1]):
+                    # index: i * X.shape[1] + t
+                    # use indexing to get proper targets too
+                    # maybe consider output_fb in a different if case for efficiency? - PUT ME TO TEST!
+                    self.states = self._clip(np.roll(self.states, 1) + self.q_in(X[i][t]) + self.output_fb * self.q_out(targets[i][t-1]))
+                    # self.last_output = y[i][t]    # instead of nan_to_num ?
+                extended_states.append(np.append(self.states, 1))
+
+        extended_states = np.array(extended_states)
+
+        return extended_states
+
+    # def stimulate():
     def fit(self, X, y, discard=0, task='regression'):
 
         # reshape data
