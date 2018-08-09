@@ -7,9 +7,10 @@ from copy import copy
 #   1:  time
 #   2:  input signal dimensionality
 
+
 class intESN:
 
-    def __init__(self, N, K, L, q_input, q_output=lambda x: 0, output_fb=False, clip=7):
+    def __init__(self, N, K, L, q_input, q_output=lambda: 0, output_fb=False, clip=7):
         # quantization functions
         self.q_in = q_input
         self.q_out = q_output
@@ -30,6 +31,40 @@ class intESN:
         self.output_fb = output_fb
         self.last_output = np.zeros([L])
 
+    def _init_optimizer(self, name, **kwargs):
+        optimizers = {
+            'sgd': {
+                'params': ['lr'],
+                'func': lambda w, dw, lr: w - (lr * dw),
+            },
+        }
+
+        # check if chosen optimizer is supported
+        if name not in optimizers.keys:
+            raise Exception('Optimizer "' + name + '" not supported. Bummer.')
+
+        # check for presence of all params
+        for param in optimizers[name]['params']:
+            if param not in kwargs:
+                raise Exception('Parameter "' + param + '" not provided to optimizer')
+
+        self.update_weights = optimizers[name]['func']
+
+    def _init_loss_function(self, name, rr):
+        loss_functions = {
+            'cross_entropy': lambda predicted, targets, n: 0
+        } 
+
+        self.compute_data_loss = loss_functions['name']
+        self.compute_reg_loss = lambda: 0.5 * rr * np.sum(self.W_out * self.W_out)
+
+    def compile(self, loss, optimizer, rr=0.0, **kwargs):
+
+        # init optimizer
+        self._init_optimizer(optimizer, **kwargs)
+
+        # define loss function
+        self._init_loss_function(loss, rr)
 
     def fit(self, X, y, discard=0, task='regression'):
 
@@ -186,7 +221,7 @@ class intESN:
         reg = 1e-3
 
         # e stands for epoch
-        for e in range(1000):
+        for e in range(1500):
             # get scores and avoid exp-losion
             scores = np.dot(extended_states, self.W_out)
             scores -= np.max(scores)
